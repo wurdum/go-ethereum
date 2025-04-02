@@ -346,6 +346,9 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 	if result != nil && reflect.TypeOf(result).Kind() != reflect.Ptr {
 		return fmt.Errorf("call result parameter must be pointer or nil interface: %v", result)
 	}
+
+	// callstack.LogCallStack()
+
 	msg, err := c.newMessage(method, args...)
 	if err != nil {
 		return err
