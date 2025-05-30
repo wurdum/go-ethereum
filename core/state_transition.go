@@ -19,6 +19,7 @@ package core
 import (
 	"bytes"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"math"
 	"math/big"
 
@@ -446,6 +447,7 @@ func (st *stateTransition) preCheck() error {
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
 func (st *stateTransition) execute() (*ExecutionResult, error) {
+	callstack.LogCallStack("")
 	endTxNow, startHookUsedGas, err, returnData := st.evm.ProcessingHook.StartTxHook()
 	if endTxNow {
 		return &ExecutionResult{

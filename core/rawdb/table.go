@@ -18,6 +18,7 @@ package rawdb
 
 import (
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/offchainlabs/nitro/callstack"
 )
 
 // table is a wrapper around a database that prefixes each key access with a pre-
@@ -55,6 +56,7 @@ func (t *table) Has(key []byte) (bool, error) {
 
 // Get retrieves the given prefixed key if it's present in the database.
 func (t *table) Get(key []byte) ([]byte, error) {
+	callstack.LogCallStack("")
 	return t.db.Get(append([]byte(t.prefix), key...))
 }
 

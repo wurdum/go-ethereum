@@ -19,6 +19,7 @@ package params
 import (
 	"errors"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"math"
 	"math/big"
 
@@ -1059,6 +1060,8 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64, curren
 	// disallow setting Merge out of order
 	isMerge = isMerge && c.IsLondon(num)
 	isVerkle := isMerge && c.IsVerkle(num, timestamp)
+	callstack.LogCallStack("")
+
 	return Rules{
 		IsArbitrum:       c.IsArbitrum(),
 		IsStylus:         c.IsArbitrum() && currentArbosVersion >= ArbosVersion_Stylus,

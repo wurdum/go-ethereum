@@ -19,6 +19,7 @@ package state
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -297,6 +298,7 @@ func (s *StateDB) Logs() []*types.Log {
 
 // AddPreimage records a SHA3 preimage seen by the VM.
 func (s *StateDB) AddPreimage(hash common.Hash, preimage []byte) {
+	log.Info(fmt.Sprintf("add-preimage, hash: %s, preimage: %s", hash.String(), hex.EncodeToString(preimage)))
 	if _, ok := s.preimages[hash]; !ok {
 		s.preimages[hash] = slices.Clone(preimage)
 	}
@@ -309,6 +311,7 @@ func (s *StateDB) Preimages() map[common.Hash][]byte {
 
 // AddRefund adds gas to the refund counter
 func (s *StateDB) AddRefund(gas uint64) {
+	log.Info(fmt.Sprintf("add-refund, gas: %d", gas))
 	s.journal.refundChange(s.refund)
 	s.refund += gas
 }
@@ -438,6 +441,7 @@ func (s *StateDB) HasSelfDestructed(addr common.Address) bool {
 
 // AddBalance adds amount to the account associated with addr.
 func (s *StateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	log.Info(fmt.Sprintf("address: %s, add-balance: %s", addr.String(), amount.String()))
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject == nil {
 		return uint256.Int{}
@@ -448,6 +452,7 @@ func (s *StateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tr
 
 // SubBalance subtracts amount from the account associated with addr.
 func (s *StateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	log.Info(fmt.Sprintf("address: %s, sub-balance: %s", addr.String(), amount.String()))
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject == nil {
 		return uint256.Int{}
@@ -460,6 +465,7 @@ func (s *StateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tr
 }
 
 func (s *StateDB) SetBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) {
+	log.Info(fmt.Sprintf("address: %s, set-balance: %s", addr.String(), amount.String()))
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
 		if amount == nil {
@@ -487,6 +493,7 @@ func (s *StateDB) ExpectBalanceMint(amount *big.Int) {
 }
 
 func (s *StateDB) SetNonce(addr common.Address, nonce uint64, reason tracing.NonceChangeReason) {
+	log.Info(fmt.Sprintf("address: %s, nonce: %d", addr.String(), nonce))
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SetNonce(nonce)
@@ -494,6 +501,7 @@ func (s *StateDB) SetNonce(addr common.Address, nonce uint64, reason tracing.Non
 }
 
 func (s *StateDB) SetCode(addr common.Address, code []byte) (prev []byte) {
+	log.Info(fmt.Sprintf("address: %s, code: %s", addr.String(), hex.EncodeToString(code)))
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
 		return stateObject.SetCode(crypto.Keccak256Hash(code), code)
@@ -502,6 +510,7 @@ func (s *StateDB) SetCode(addr common.Address, code []byte) (prev []byte) {
 }
 
 func (s *StateDB) SetState(addr common.Address, key, value common.Hash) common.Hash {
+	log.Info(fmt.Sprintf("address: %s, key: %s, value: %v", addr.String(), key.String(), value.String()))
 	if stateObject := s.getOrNewStateObject(addr); stateObject != nil {
 		return stateObject.SetState(key, value)
 	}
@@ -519,6 +528,7 @@ func (s *StateDB) SetStorage(addr common.Address, storage map[common.Hash]common
 	//
 	// TODO (rjl493456442): This function should only be supported by 'unwritable'
 	// state, and all mutations made should be discarded afterward.
+	log.Info(fmt.Sprintf("address: %s, set-storage", addr.String()))
 	obj := s.getStateObject(addr)
 	if obj != nil {
 		if _, ok := s.stateObjectsDestruct[addr]; !ok {
@@ -579,6 +589,7 @@ func (s *StateDB) SelfDestruct6780(addr common.Address) (uint256.Int, bool) {
 // adds the change to the journal so that it can be rolled back
 // to its previous value if there is a revert.
 func (s *StateDB) SetTransientState(addr common.Address, key, value common.Hash) {
+	log.Info(fmt.Sprintf("address: %s, set-transient", addr.String()))
 	prev := s.GetTransientState(addr, key)
 	if prev == value {
 		return

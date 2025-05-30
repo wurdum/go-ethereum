@@ -19,6 +19,7 @@ package pathdb
 import (
 	"errors"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"io"
 	"sync"
 	"time"
@@ -331,6 +332,7 @@ func (db *Database) Update(root common.Hash, parentRoot common.Hash, block uint6
 // can be used alone and mostly for test purposes.
 func (db *Database) Commit(root common.Hash, report bool) error {
 	// Hold the lock to prevent concurrent mutations.
+	callstack.LogCallStack("")
 	db.lock.Lock()
 	defer db.lock.Unlock()
 

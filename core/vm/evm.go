@@ -18,6 +18,7 @@ package vm
 
 import (
 	"errors"
+	"github.com/offchainlabs/nitro/callstack"
 	"math/big"
 	"sync/atomic"
 
@@ -150,6 +151,11 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 	evm.ProcessingHook = DefaultTxProcessor{evm: evm}
 	evm.precompiles = activePrecompiledContracts(evm.chainRules)
 	evm.interpreter = NewEVMInterpreter(evm)
+
+	dump := make(map[string]string)
+	callstack.FillMapWithStructFields(dump, evm.chainRules, "rules", []string{}, []string{})
+	callstack.PrintPrettyJson(dump)
+
 	return evm
 }
 
@@ -200,6 +206,7 @@ func isSystemCall(caller common.Address) bool {
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Capture the tracer start/end events in debug mode
+	callstack.LogCallStack("")
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, CALL, caller, addr, input, gas, value.ToBig())
 		defer func(startGas uint64) {
@@ -288,6 +295,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 // code with the caller as context.
 func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Invoke tracer hooks that signal entering/exiting a call frame
+	callstack.LogCallStack("")
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, CALLCODE, caller, addr, input, gas, value.ToBig())
 		defer func(startGas uint64) {
@@ -349,6 +357,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 // code with the caller as context and the caller is set to the caller of the caller.
 func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Invoke tracer hooks that signal entering/exiting a call frame
+	callstack.LogCallStack("")
 	if evm.Config.Tracer != nil {
 		// DELEGATECALL inherits value from parent call
 		evm.captureBegin(evm.depth, DELEGATECALL, caller, addr, input, gas, value.ToBig())
@@ -404,6 +413,7 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 // instead of performing the modifications.
 func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []byte, gas uint64) (ret []byte, leftOverGas uint64, err error) {
 	// Invoke tracer hooks that signal entering/exiting a call frame
+	callstack.LogCallStack("")
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, STATICCALL, caller, addr, input, gas, nil)
 		defer func(startGas uint64) {
@@ -464,6 +474,7 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 
 // create creates a new contract using code as deployment code.
 func (evm *EVM) create(caller common.Address, code []byte, gas uint64, value *uint256.Int, address common.Address, typ OpCode) (ret []byte, createAddress common.Address, leftOverGas uint64, err error) {
+	callstack.LogCallStack("")
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, typ, caller, address, code, gas, value.ToBig())
 		defer func(startGas uint64) {

@@ -21,6 +21,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"maps"
 	"math"
 	"math/big"
@@ -203,7 +204,9 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 
 // ActivePrecompiledContracts returns a copy of precompiled contracts enabled with the current configuration.
 func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
-	return maps.Clone(activePrecompiledContracts(rules))
+	callstack.LogCallStack("")
+	contracts := activePrecompiledContracts(rules)
+	return maps.Clone(contracts)
 }
 
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.

@@ -456,7 +456,7 @@ func (ec *Client) NonceAtHash(ctx context.Context, account common.Address, block
 
 // FilterLogs executes a filter query.
 func (ec *Client) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
-	callstack.LogCallStack()
+	callstack.LogCallStack("")
 	var result []types.Log
 	arg, err := toFilterArg(q)
 	if err != nil {

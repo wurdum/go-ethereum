@@ -20,6 +20,7 @@ import (
 	crand "crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"hash/crc32"
 	"net/http"
 	"os"
@@ -788,6 +789,7 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient 
 func (n *Node) OpenDatabaseWithFreezerWithExtraOptions(name string, cache, handles int, ancient string, namespace string, readonly bool, pebbleExtraOptions *pebble.ExtraOptions) (ethdb.Database, error) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
+	callstack.LogCallStack(name)
 	if n.state == closedState {
 		return nil, ErrNodeStopped
 	}

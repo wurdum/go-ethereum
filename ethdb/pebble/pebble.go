@@ -22,6 +22,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -360,6 +361,7 @@ func (d *Database) Close() error {
 
 // Has retrieves if a key is present in the key-value store.
 func (d *Database) Has(key []byte) (bool, error) {
+	callstack.LogCallStack(d.fn)
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
 	if d.closed {
@@ -379,6 +381,7 @@ func (d *Database) Has(key []byte) (bool, error) {
 
 // Get retrieves the given key if it's present in the key-value store.
 func (d *Database) Get(key []byte) ([]byte, error) {
+	callstack.LogCallStack(d.fn)
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
 	if d.closed {
@@ -398,6 +401,7 @@ func (d *Database) Get(key []byte) ([]byte, error) {
 
 // Put inserts the given value into the key-value store.
 func (d *Database) Put(key []byte, value []byte) error {
+	callstack.LogCallStack(d.fn)
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
 	if d.closed {
@@ -649,6 +653,7 @@ type batch struct {
 
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
+	callstack.LogCallStack(b.db.fn)
 	if err := b.b.Set(key, value, nil); err != nil {
 		return err
 	}
@@ -672,6 +677,7 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
+	callstack.LogCallStack(b.db.fn)
 	b.db.quitLock.RLock()
 	defer b.db.quitLock.RUnlock()
 	if b.db.closed {

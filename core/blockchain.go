@@ -20,6 +20,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"io"
 	"math"
 	"math/big"
@@ -319,6 +320,7 @@ type trieGcEntry struct {
 // available in the database. It initialises the default Ethereum Validator
 // and Processor.
 func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, genesis *Genesis, overrides *ChainOverrides, engine consensus.Engine, vmConfig vm.Config, txLookupLimit *uint64) (*BlockChain, error) {
+	callstack.LogCallStack("")
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}

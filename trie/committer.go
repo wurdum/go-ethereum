@@ -18,6 +18,7 @@ package trie
 
 import (
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -49,6 +50,7 @@ func (c *committer) Commit(n node, parallel bool) hashNode {
 
 // commit collapses a node down into a hash node and returns it.
 func (c *committer) commit(path []byte, n node, parallel bool) node {
+	callstack.LogCallStack("")
 	// if this path is clean, use available cached data
 	hash, dirty := n.cache()
 	if hash != nil && !dirty {

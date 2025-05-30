@@ -226,6 +226,7 @@ func (s *stateObject) SetState(key, value common.Hash) common.Hash {
 // setState updates a value in account dirty storage. The dirtiness will be
 // removed if the value being set equals to the original value.
 func (s *stateObject) setState(key common.Hash, value common.Hash, origin common.Hash) {
+	//log.Info(fmt.Sprintf("so     : %s, key: %s, value: %s", s.address.String(), key.String(), value.String()))
 	// Storage slot is set back to its original value, undo the dirty marker
 	if value == origin {
 		delete(s.dirtyStorage, key)

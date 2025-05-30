@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -54,6 +55,7 @@ func (db *RecordingKV) Get(key []byte) ([]byte, error) {
 	var hash common.Hash
 	var res []byte
 	var err error
+	callstack.LogCallStack("")
 	if len(key) == 32 {
 		copy(hash[:], key)
 		res, err = db.inner.Node(hash)

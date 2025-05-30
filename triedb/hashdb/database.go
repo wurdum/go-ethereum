@@ -19,6 +19,7 @@ package hashdb
 import (
 	"errors"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"reflect"
 	"sync"
 	"time"
@@ -173,6 +174,7 @@ func (db *Database) insert(hash common.Hash, node []byte) {
 // node retrieves an encoded cached trie node from memory. If it cannot be found
 // cached, the method queries the persistent database for the content.
 func (db *Database) node(hash common.Hash) ([]byte, error) {
+	callstack.LogCallStack("")
 	// It doesn't make sense to retrieve the metaroot
 	if hash == (common.Hash{}) {
 		return nil, errors.New("not found")
@@ -403,6 +405,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 // to disk, forcefully tearing down all references in both directions. As a side
 // effect, all pre-images accumulated up to this point are also written.
 func (db *Database) Commit(node common.Hash, report bool) error {
+	callstack.LogCallStack("")
 	if node == (common.Hash{}) {
 		// There's no data to commit in this node
 		return nil

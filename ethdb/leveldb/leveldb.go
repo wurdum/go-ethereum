@@ -23,6 +23,7 @@ package leveldb
 import (
 	"bytes"
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 	"sync"
 	"time"
 
@@ -185,11 +186,13 @@ func (db *Database) Close() error {
 
 // Has retrieves if a key is present in the key-value store.
 func (db *Database) Has(key []byte) (bool, error) {
+	callstack.LogCallStack(db.fn)
 	return db.db.Has(key, nil)
 }
 
 // Get retrieves the given key if it's present in the key-value store.
 func (db *Database) Get(key []byte) ([]byte, error) {
+	callstack.LogCallStack(db.fn)
 	dat, err := db.db.Get(key, nil)
 	if err != nil {
 		return nil, err
@@ -199,6 +202,7 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 
 // Put inserts the given value into the key-value store.
 func (db *Database) Put(key []byte, value []byte) error {
+	callstack.LogCallStack(db.fn)
 	return db.db.Put(key, value, nil)
 }
 

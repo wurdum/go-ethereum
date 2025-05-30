@@ -1,6 +1,7 @@
 package types
 
 import (
+	"github.com/offchainlabs/nitro/callstack"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -34,6 +35,7 @@ func NewArbitrumSigner(signer Signer) Signer {
 }
 
 func (s arbitrumSigner) Sender(tx *Transaction) (common.Address, error) {
+	callstack.LogCallStack("")
 	switch inner := tx.inner.(type) {
 	case *ArbitrumUnsignedTx:
 		return inner.From, nil

@@ -18,6 +18,7 @@ package vm
 
 import (
 	"fmt"
+	"github.com/offchainlabs/nitro/callstack"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -166,7 +167,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	in.evm.ProcessingHook.PushContract(contract)
 	defer func() { in.evm.depth-- }()
 	defer func() { in.evm.ProcessingHook.PopContract() }()
-
+	callstack.LogCallStack("")
 	// Make sure the readOnly is only set if we aren't in readOnly yet.
 	// This also makes sure that the readOnly flag isn't removed for child calls.
 	if readOnly && !in.readOnly {

@@ -18,6 +18,7 @@ package trienode
 
 import (
 	"errors"
+	"github.com/offchainlabs/nitro/callstack"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -75,6 +76,8 @@ func (db *ProofSet) DeleteRange(start, end []byte) error {
 
 // Get returns a stored node
 func (db *ProofSet) Get(key []byte) ([]byte, error) {
+	callstack.LogCallStack("")
+
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
