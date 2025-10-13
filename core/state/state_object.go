@@ -22,6 +22,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -391,6 +392,10 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 		}
 	)
 	for key, val := range s.pendingStorage {
+		if types.IsTargetBlock() && types.TraceShowDeepstate {
+			types.OLog(fmt.Sprintf("deepstate[%s]", strings.ToLower(s.address.String())), key.String(), val.String())
+		}
+
 		// Skip the noop storage changes, it might be possible the value
 		// of tracked slot is same in originStorage and pendingStorage
 		// map, e.g. the storage slot is modified in tx_a and then reset
@@ -398,6 +403,7 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 		if val == s.originStorage[key] {
 			continue
 		}
+
 		hash := crypto.HashData(buf, key[:])
 		if op.storages == nil {
 			op.storages = make(map[common.Hash][]byte)

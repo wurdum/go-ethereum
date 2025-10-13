@@ -19,12 +19,15 @@ package state
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
 	"math/big"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -297,6 +300,9 @@ func (s *StateDB) Logs() []*types.Log {
 
 // AddPreimage records a SHA3 preimage seen by the VM.
 func (s *StateDB) AddPreimage(hash common.Hash, preimage []byte) {
+	if types.IsTargetBlock() {
+		types.OLog("preimage", hash.String(), hex.EncodeToString(preimage))
+	}
 	if _, ok := s.preimages[hash]; !ok {
 		s.preimages[hash] = slices.Clone(preimage)
 	}
@@ -309,6 +315,9 @@ func (s *StateDB) Preimages() map[common.Hash][]byte {
 
 // AddRefund adds gas to the refund counter
 func (s *StateDB) AddRefund(gas uint64) {
+	if types.IsTargetBlock() {
+		types.OLog("refund", "add", strconv.FormatUint(gas, 10))
+	}
 	s.journal.refundChange(s.refund)
 	s.refund += gas
 }
@@ -316,6 +325,9 @@ func (s *StateDB) AddRefund(gas uint64) {
 // SubRefund removes gas from the refund counter.
 // This method will panic if the refund counter goes below zero
 func (s *StateDB) SubRefund(gas uint64) {
+	if types.IsTargetBlock() {
+		types.OLog("refund", "remove", strconv.FormatUint(gas, 10))
+	}
 	s.journal.refundChange(s.refund)
 	if gas > s.refund {
 		panic(fmt.Sprintf("Refund counter below zero (gas: %d > refund: %d)", gas, s.refund))
@@ -438,6 +450,9 @@ func (s *StateDB) HasSelfDestructed(addr common.Address) bool {
 
 // AddBalance adds amount to the account associated with addr.
 func (s *StateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	if types.IsTargetBlock() {
+		types.OLog("account", strings.ToLower(addr.String()), fmt.Sprintf("balance+=%v", amount))
+	}
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject == nil {
 		return uint256.Int{}
@@ -448,6 +463,9 @@ func (s *StateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tr
 
 // SubBalance subtracts amount from the account associated with addr.
 func (s *StateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
+	if types.IsTargetBlock() {
+		types.OLog("account", strings.ToLower(addr.String()), fmt.Sprintf("balance-=%v", amount))
+	}
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject == nil {
 		return uint256.Int{}
@@ -460,6 +478,9 @@ func (s *StateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tr
 }
 
 func (s *StateDB) SetBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) {
+	if types.IsTargetBlock() {
+		types.OLog("account", strings.ToLower(addr.String()), fmt.Sprintf("balance=%v", amount))
+	}
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
 		if amount == nil {
@@ -487,6 +508,9 @@ func (s *StateDB) ExpectBalanceMint(amount *big.Int) {
 }
 
 func (s *StateDB) SetNonce(addr common.Address, nonce uint64, reason tracing.NonceChangeReason) {
+	if types.IsTargetBlock() {
+		types.OLog("account", strings.ToLower(addr.String()), fmt.Sprintf("nonce=%v", nonce))
+	}
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
 		stateObject.SetNonce(nonce)
@@ -494,6 +518,9 @@ func (s *StateDB) SetNonce(addr common.Address, nonce uint64, reason tracing.Non
 }
 
 func (s *StateDB) SetCode(addr common.Address, code []byte) (prev []byte) {
+	if types.IsTargetBlock() {
+		types.OLog("code", strings.ToLower(addr.String()), hex.EncodeToString(code))
+	}
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
 		return stateObject.SetCode(crypto.Keccak256Hash(code), code)
@@ -502,6 +529,9 @@ func (s *StateDB) SetCode(addr common.Address, code []byte) (prev []byte) {
 }
 
 func (s *StateDB) SetState(addr common.Address, key, value common.Hash) common.Hash {
+	if types.IsTargetBlock() {
+		types.OLog(fmt.Sprintf("state[%s]", strings.ToLower(addr.String())), key.String(), value.String())
+	}
 	if stateObject := s.getOrNewStateObject(addr); stateObject != nil {
 		return stateObject.SetState(key, value)
 	}
@@ -519,6 +549,7 @@ func (s *StateDB) SetStorage(addr common.Address, storage map[common.Hash]common
 	//
 	// TODO (rjl493456442): This function should only be supported by 'unwritable'
 	// state, and all mutations made should be discarded afterward.
+
 	obj := s.getStateObject(addr)
 	if obj != nil {
 		if _, ok := s.stateObjectsDestruct[addr]; !ok {
@@ -527,6 +558,9 @@ func (s *StateDB) SetStorage(addr common.Address, storage map[common.Hash]common
 	}
 	newObj := s.createObject(addr)
 	for k, v := range storage {
+		if types.IsTargetBlock() {
+			types.OLog(fmt.Sprintf("state[%s]", strings.ToLower(addr.String())), k.String(), v.String())
+		}
 		newObj.SetState(k, v)
 	}
 	// Inherit the metadata of original object if it was existent
@@ -543,6 +577,10 @@ func (s *StateDB) SetStorage(addr common.Address, storage map[common.Hash]common
 // The account's state object is still available until the state is committed,
 // getStateObject will return a non-nil account after SelfDestruct.
 func (s *StateDB) SelfDestruct(addr common.Address) uint256.Int {
+	if types.IsTargetBlock() {
+		types.OLog("account", strings.ToLower(addr.String()), "deleted")
+	}
+
 	stateObject := s.getStateObject(addr)
 	var prevBalance uint256.Int
 	if stateObject == nil {
@@ -565,6 +603,10 @@ func (s *StateDB) SelfDestruct(addr common.Address) uint256.Int {
 }
 
 func (s *StateDB) SelfDestruct6780(addr common.Address) (uint256.Int, bool) {
+	if types.IsTargetBlock() {
+		types.OLog("account", strings.ToLower(addr.String()), "deleted6780")
+	}
+
 	stateObject := s.getStateObject(addr)
 	if stateObject == nil {
 		return uint256.Int{}, false
@@ -579,6 +621,10 @@ func (s *StateDB) SelfDestruct6780(addr common.Address) (uint256.Int, bool) {
 // adds the change to the journal so that it can be rolled back
 // to its previous value if there is a revert.
 func (s *StateDB) SetTransientState(addr common.Address, key, value common.Hash) {
+	if types.IsTargetBlock() {
+		types.OLog(fmt.Sprintf("state-t[%s]", strings.ToLower(addr.String())), key.String(), value.String())
+	}
+
 	prev := s.GetTransientState(addr, key)
 	if prev == value {
 		return
@@ -694,6 +740,9 @@ func (s *StateDB) createZombie(addr common.Address) *stateObject {
 // exists, this function will silently overwrite it which might lead to a
 // consensus bug eventually.
 func (s *StateDB) CreateAccount(addr common.Address) {
+	if types.IsTargetBlock() {
+		types.OLog("account", strings.ToLower(addr.String()), "created")
+	}
 	s.createObject(addr)
 }
 
@@ -703,6 +752,9 @@ func (s *StateDB) CreateAccount(addr common.Address) {
 // This operation sets the 'newContract'-flag, which is required in order to
 // correctly handle EIP-6780 'delete-in-same-transaction' logic.
 func (s *StateDB) CreateContract(addr common.Address) {
+	if types.IsTargetBlock() {
+		types.OLog("contract", strings.ToLower(addr.String()), "created")
+	}
 	obj := s.getStateObject(addr)
 	if !obj.newContract {
 		obj.newContract = true
@@ -1019,6 +1071,19 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		if op.isDelete() {
 			deletedAddrs = append(deletedAddrs, addr)
 		} else {
+			if types.IsTargetBlock() && types.TraceShowStateRootChange {
+				obj := s.stateObjects[addr]
+				if obj.origin == nil {
+					// NEW account
+					types.OLog2(fmt.Sprintf("s=commit new address=%s balance=%s storageRoot=%s nonce=%d",
+						addr.Hex(), obj.data.Balance.String(), obj.data.Root.Hex(), obj.data.Nonce))
+				} else {
+					// UPDATE existing account
+					types.OLog2(fmt.Sprintf("s=commit update address=%s balance=%s storageRoot=%s nonce=%d",
+						addr.Hex(), obj.data.Balance.String(), obj.data.Root.Hex(), obj.data.Nonce))
+				}
+			}
+
 			s.updateStateObject(s.stateObjects[addr])
 			s.AccountUpdated += 1
 		}
@@ -1028,6 +1093,9 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		sort.Slice(deletedAddrs, func(i, j int) bool { return deletedAddrs[i].Cmp(deletedAddrs[j]) < 0 })
 	}
 	for _, deletedAddr := range deletedAddrs {
+		if types.IsTargetBlock() && types.TraceShowStateRootChange {
+			types.OLog2(fmt.Sprintf("s=commit delete address=%s", deletedAddr.Hex()))
+		}
 		s.deleteStateObject(deletedAddr)
 		s.AccountDeleted += 1
 	}
@@ -1058,6 +1126,10 @@ func (s *StateDB) SetTxContext(thash common.Hash, ti int) {
 	// Arbitrum: clear memory charging state for new tx
 	s.arbExtraData.openWasmPages = 0
 	s.arbExtraData.everWasmPages = 0
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("stylus wasm store reset pages tx=%s", thash.String()))
+	}
 }
 
 func (s *StateDB) clearJournalAndRefund() {
@@ -1492,6 +1564,11 @@ func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping 
 // - Add coinbase to access list (EIP-3651)
 // - Reset transient storage (EIP-1153)
 func (s *StateDB) Prepare(rules params.Rules, sender, coinbase common.Address, dst *common.Address, precompiles []common.Address, list types.AccessList) {
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("precompile prepare len=%d", len(precompiles)))
+	}
+
 	if rules.IsEIP2929 && rules.IsEIP4762 {
 		panic("eip2929 and eip4762 are both activated")
 	}

@@ -22,6 +22,10 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +33,391 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
+
+var (
+	TraceShowStacktrace      bool
+	TraceShowArbOSRead       bool
+	TraceShowDeepstate       bool
+	TraceShowBurn            bool
+	TraceShowOpcodes         bool
+	TraceShowStateRootChange bool
+
+	targetBlockNumber  int64
+	currentBlockNumber int64
+	transactionIndex   int64
+)
+
+func init() {
+	TraceShowStacktrace = os.Getenv("TRACE_SHOW_STACKTRACE") == "true"
+	TraceShowArbOSRead = os.Getenv("TRACE_SHOW_ARBOS_READ") == "true"
+	TraceShowDeepstate = os.Getenv("TRACE_SHOW_DEEPSTATE") == "true"
+	TraceShowBurn = os.Getenv("TRACE_SHOW_BURN") == "true"
+	TraceShowOpcodes = os.Getenv("TRACE_SHOW_OPCODES") == "true"
+	TraceShowStateRootChange = os.Getenv("TRACE_SHOW_STATE_ROOT_CHANGE") == "true"
+
+	if val, err := strconv.ParseInt(os.Getenv("TARGET_BLOCK_NUMBER"), 10, 64); err == nil {
+		targetBlockNumber = val
+	} else {
+		targetBlockNumber = -1
+	}
+}
+
+func GetTargetBlockNumber() int64 {
+	return targetBlockNumber
+}
+
+func SetCurrentBlockNumber(blockNumber int64) {
+	currentBlockNumber = blockNumber
+}
+
+func SetTransactionIndex(txIndex int64) {
+	transactionIndex = txIndex
+}
+
+func IsTargetBlock() bool {
+	return currentBlockNumber == targetBlockNumber
+}
+
+func OLogAlways(log string) {
+	if TraceShowStacktrace {
+		println(GetCallStackString())
+	}
+
+	println(log)
+}
+
+func OLog2(log string) {
+	if !IsTargetBlock() {
+		return
+	}
+
+	if TraceShowStacktrace {
+		println(fmt.Sprintf("b=%d, t=%d %s", currentBlockNumber, transactionIndex, GetCallStackString()))
+	}
+
+	println(fmt.Sprintf("b=%d, t=%d %s", currentBlockNumber, transactionIndex, log))
+}
+
+func OLog2Fast(log string) {
+	if !IsTargetBlock() {
+		return
+	}
+
+	println(fmt.Sprintf("b=%d, t=%d %s", currentBlockNumber, transactionIndex, log))
+}
+
+func OLog(scope, key, value string) {
+	if !IsTargetBlock() {
+		return
+	}
+
+	if TraceShowStacktrace {
+		println(fmt.Sprintf("b=%d, t=%d %s", currentBlockNumber, transactionIndex, GetCallStackString()))
+	}
+
+	println(fmt.Sprintf("b=%d, t=%d, s=%s: %s %s", currentBlockNumber, transactionIndex, scope, key, value))
+}
+
+func Log3(block *Block) {
+	if !IsTargetBlock() {
+		return
+	}
+
+	// Check if block is nil
+	if block == nil {
+		return
+	}
+
+	// Start building the output
+	var output strings.Builder
+	header := block.Header()
+
+	// Block header section
+	output.WriteString(fmt.Sprintf("Block %d\n", header.Number.Uint64()))
+	output.WriteString("  Header:\n")
+	output.WriteString(fmt.Sprintf("    Hash: %s\n", block.Hash().Hex()))
+	output.WriteString(fmt.Sprintf("    Number: %d\n", header.Number.Uint64()))
+	output.WriteString(fmt.Sprintf("    Parent: %s\n", header.ParentHash.Hex()))
+	output.WriteString(fmt.Sprintf("    Beneficiary: %s\n", strings.ToLower(header.Coinbase.Hex())))
+	output.WriteString(fmt.Sprintf("    Gas Limit: %d\n", header.GasLimit))
+	output.WriteString(fmt.Sprintf("    Gas Used: %d\n", header.GasUsed))
+	output.WriteString(fmt.Sprintf("    Timestamp: %d\n", header.Time))
+	output.WriteString(fmt.Sprintf("    Extra Data: %x\n", header.Extra))
+	output.WriteString(fmt.Sprintf("    Difficulty: %s\n", header.Difficulty.String()))
+	output.WriteString(fmt.Sprintf("    Mix Hash: %s\n", header.MixDigest.Hex()))
+	output.WriteString(fmt.Sprintf("    Nonce: %d\n", header.Nonce.Uint64()))
+	output.WriteString(fmt.Sprintf("    Uncles Hash: %s\n", header.UncleHash.Hex()))
+	output.WriteString(fmt.Sprintf("    Tx Root: %s\n", header.TxHash.Hex()))
+	output.WriteString(fmt.Sprintf("    Receipts Root: %s\n", header.ReceiptHash.Hex()))
+	output.WriteString(fmt.Sprintf("    State Root: %s\n", header.Root.Hex()))
+	if header.BaseFee != nil {
+		output.WriteString(fmt.Sprintf("    BaseFeePerGas: %s\n", header.BaseFee.String()))
+	} else {
+		output.WriteString("    BaseFeePerGas: <nil>\n")
+	}
+
+	// IsPostMerge check
+	isPostMerge := header.Difficulty.Cmp(big.NewInt(0)) == 0 && header.MixDigest == (common.Hash{})
+	output.WriteString(fmt.Sprintf("    IsPostMerge: %t\n", isPostMerge))
+
+	// TotalDifficulty - we'll use block number + 1 as approximation
+	totalDifficulty := new(big.Int).Add(header.Number, big.NewInt(1))
+	output.WriteString(fmt.Sprintf("    TotalDifficulty: %s\n", totalDifficulty.String()))
+
+	// Uncles section
+	output.WriteString("  Uncles:\n")
+	uncles := block.Uncles()
+	if len(uncles) == 0 {
+		// Empty uncles section
+	} else {
+		for _, uncle := range uncles {
+			output.WriteString(fmt.Sprintf("    Uncle Hash: %s\n", uncle.Hash().Hex()))
+		}
+	}
+
+	// Transactions section
+	output.WriteString("  Transactions:\n")
+	txs := block.Transactions()
+	for _, tx := range txs {
+		output.WriteString(fmt.Sprintf("    Hash:      %s\n", tx.Hash().Hex()))
+
+		// Get from address
+		from, err := Sender(LatestSignerForChainID(tx.ChainId()), tx)
+		if err != nil {
+			output.WriteString(fmt.Sprintf("    From:      <error: %v>\n", err))
+		} else {
+			output.WriteString(fmt.Sprintf("    From:      %s\n", strings.ToLower(from.Hex())))
+		}
+
+		// To address
+		if tx.To() != nil {
+			output.WriteString(fmt.Sprintf("    To:        %s\n", strings.ToLower(tx.To().Hex())))
+		} else {
+			output.WriteString("    To:        <nil>\n")
+		}
+
+		// Transaction type
+		txType := tx.Type()
+		txTypeName := "Unknown"
+		switch txType {
+		case LegacyTxType:
+			txTypeName = "Legacy"
+		case AccessListTxType:
+			txTypeName = "AccessList"
+		case DynamicFeeTxType:
+			txTypeName = "EIP1559"
+		case BlobTxType:
+			txTypeName = "Blob"
+		case SetCodeTxType:
+			txTypeName = "SetCode"
+		default:
+			txTypeName = fmt.Sprintf("%d", txType)
+		}
+		output.WriteString(fmt.Sprintf("    TxType:    %s\n", txTypeName))
+
+		// Gas fees
+		if tx.GasTipCap() != nil {
+			output.WriteString(fmt.Sprintf("    MaxPriorityFeePerGas: %s\n", tx.GasTipCap().String()))
+		} else {
+			output.WriteString("    MaxPriorityFeePerGas: 0\n")
+		}
+		if tx.GasFeeCap() != nil {
+			output.WriteString(fmt.Sprintf("    MaxFeePerGas: %s\n", tx.GasFeeCap().String()))
+		} else if tx.GasPrice() != nil {
+			output.WriteString(fmt.Sprintf("    MaxFeePerGas: %s\n", tx.GasPrice().String()))
+		} else {
+			output.WriteString("    MaxFeePerGas: 0\n")
+		}
+
+		// Additional fields
+		output.WriteString("    SourceHash:Ignore\n")
+		output.WriteString("    Mint:      Ignore\n")
+		output.WriteString("    OpSystem:  False\n")
+		output.WriteString(fmt.Sprintf("    Gas Limit: %d\n", tx.Gas()))
+		output.WriteString(fmt.Sprintf("    Nonce:     %d\n", tx.Nonce()))
+		output.WriteString(fmt.Sprintf("    Value:     %s\n", tx.Value().String()))
+
+		// Data field
+		data := tx.Data()
+		if len(data) > 0 {
+			output.WriteString(fmt.Sprintf("    Data:      %x\n", data))
+		} else {
+			output.WriteString("    Data:      \n")
+		}
+
+		// Signature
+		v, r, s := tx.RawSignatureValues()
+		if r != nil && s != nil {
+			// Combine R and S for signature
+			sigBytes := make([]byte, 64)
+			r.FillBytes(sigBytes[:32])
+			s.FillBytes(sigBytes[32:])
+			output.WriteString(fmt.Sprintf("    Signature: %x\n", sigBytes))
+		} else {
+			output.WriteString("    Signature:\n")
+		}
+
+		// V value
+		if v != nil {
+			output.WriteString(fmt.Sprintf("    V:         %s\n", v.String()))
+		} else {
+			output.WriteString("    V:\n")
+		}
+
+		// ChainId
+		if tx.ChainId() != nil {
+			output.WriteString(fmt.Sprintf("    ChainId:   %s\n", tx.ChainId().String()))
+		} else {
+			output.WriteString("    ChainId:\n")
+		}
+
+		// Timestamp (usually 0 for regular transactions)
+		output.WriteString("    Timestamp: 0\n")
+	}
+
+	// Withdrawals section
+	output.WriteString("  Withdrawals:\n")
+	withdrawals := block.Withdrawals()
+	if withdrawals != nil && len(withdrawals) > 0 {
+		for _, w := range withdrawals {
+			output.WriteString(fmt.Sprintf("    Index: %d, Validator: %d, Address: %s, Amount: %d\n",
+				w.Index, w.Validator, w.Address.Hex(), w.Amount))
+		}
+	}
+
+	// Print the complete output
+	println(output.String())
+}
+
+func GetCallStackString() string {
+	frames := GetCallStack()
+	if len(frames) == 0 {
+		return ""
+	}
+
+	// Pre-allocate with reasonable capacity to avoid reallocations
+	var b strings.Builder
+	b.Grow(len(frames) * 30) // Rough estimate
+
+	for i, frame := range frames {
+		if i > 0 {
+			b.WriteString(" → ")
+		}
+
+		// Format: file:line [StructName.]MethodName
+		b.WriteString(frame.File)
+		b.WriteByte(':')
+		b.WriteString(strconv.Itoa(frame.LineNumber))
+		b.WriteByte(' ')
+
+		if frame.StructureName != "" {
+			b.WriteString(frame.StructureName)
+			b.WriteByte('.')
+		}
+		b.WriteString(frame.MethodName)
+	}
+
+	return b.String()
+}
+
+type StackFrame struct {
+	File          string `json:"file"`
+	LineNumber    int    `json:"lineNumber"`
+	StructureName string `json:"structureName"`
+	MethodName    string `json:"methodName"`
+}
+
+func IsNitroCall(fileName string) bool {
+	return strings.Contains(fileName, "nitro") && strings.HasSuffix(fileName, ".go")
+}
+
+// GetCallStack returns a structured representation of the call stack
+func GetCallStack() []StackFrame {
+	// Skip this function and the calling function
+	const skip = 2
+	const depth = 20
+
+	// Create a buffer for program counters
+	var pcs [depth]uintptr
+	n := runtime.Callers(skip, pcs[:])
+
+	if n == 0 {
+		return []StackFrame{}
+	}
+
+	// Get frame information
+	frames := runtime.CallersFrames(pcs[:n])
+
+	// Build the call stack
+	var stackFrames []StackFrame
+	for {
+		frame, more := frames.Next()
+
+		// Parse the function name to extract package, type (if any), and method
+		funcNameParts := strings.Split(frame.Function, ".")
+
+		var structureName, methodName string
+
+		if len(funcNameParts) >= 2 {
+			// Check if this is a method on a struct type
+			methodName = funcNameParts[len(funcNameParts)-1]
+
+			// Look for struct type pattern
+			typeIndex := len(funcNameParts) - 2
+			typePart := funcNameParts[typeIndex]
+
+			// Check if it's a struct method (has a type component)
+			if strings.Contains(typePart, ")") ||
+				(typePart != "" && typePart[0] >= 'A' && typePart[0] <= 'Z') {
+				// Clean up the type name (remove pointer symbol)
+				typePart = strings.TrimPrefix(typePart, "(*")
+				typePart = strings.TrimSuffix(typePart, ")")
+
+				if typePart != "" {
+					// It's a method on a struct
+					structureName = typePart
+				}
+			} else {
+				// Regular function
+				structureName = "" // No structure for regular functions
+			}
+		} else if len(funcNameParts) == 1 {
+			methodName = funcNameParts[0]
+			structureName = ""
+		} else {
+			methodName = frame.Function
+			structureName = ""
+		}
+
+		// Extract filename without full path
+		fileName := frame.File
+		if lastSlash := strings.LastIndexByte(fileName, '/'); lastSlash >= 0 {
+			fileName = fileName[lastSlash+1:]
+		}
+
+		if IsNitroCall(frame.File) {
+			stackFrame := StackFrame{
+				File:          fileName,
+				LineNumber:    frame.Line,
+				StructureName: structureName,
+				MethodName:    methodName,
+			}
+
+			stackFrames = append(stackFrames, stackFrame)
+		}
+
+		if !more {
+			break
+		}
+	}
+
+	// Reverse the call stack to show in chronological order
+	for i, j := 0, len(stackFrames)-1; i < j; i, j = i+1, j-1 {
+		stackFrames[i], stackFrames[j] = stackFrames[j], stackFrames[i]
+	}
+
+	return stackFrames
+}
 
 var (
 	ErrInvalidSig           = errors.New("invalid transaction v, r, s values")
@@ -88,6 +477,9 @@ func (tx *Transaction) GetRawCachedCalldataUnits() (uint64, uint64) {
 // returning nil if no cache is present or the cache is for a different compression level.
 func (tx *Transaction) GetCachedCalldataUnits(requestedCompressionLevel uint64) *uint64 {
 	cachedCompressionLevel, cachedUnits := tx.GetRawCachedCalldataUnits()
+	if IsTargetBlock() {
+		OLog2(fmt.Sprintf("level=%d units=%d", requestedCompressionLevel, cachedUnits))
+	}
 	if cachedUnits == 0 {
 		// empty cache
 		return nil
@@ -615,6 +1007,11 @@ func (tx *Transaction) Hash() common.Hash {
 	} else {
 		h = prefixedRlpHash(tx.Type(), tx.inner)
 	}
+
+	if IsTargetBlock() {
+		OLog2(fmt.Sprintf("transaction hash=%s", h.String()))
+	}
+
 	tx.hash.Store(&h)
 	return h
 }

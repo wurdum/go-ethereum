@@ -17,8 +17,10 @@
 package vm
 
 import (
+	"fmt"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -342,7 +344,14 @@ func opReturnDataCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeConte
 
 func opExtCodeSize(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	slot := scope.Stack.peek()
-	slot.SetUint64(uint64(interpreter.evm.StateDB.GetCodeSize(slot.Bytes20())))
+	address := common.Address(slot.Bytes20())
+	codeSize := uint64(interpreter.evm.StateDB.GetCodeSize(address))
+
+	if types.TraceShowOpcodes && types.IsTargetBlock() {
+		types.OLog2Fast(fmt.Sprintf("evm EXTCODESIZE addr=%s codeSize=%d", strings.ToLower(address.String()), codeSize))
+	}
+
+	slot.SetUint64(codeSize)
 	return nil, nil
 }
 
@@ -687,6 +696,10 @@ func opCreate(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 		gas -= gas / 64
 	}
 
+	if types.TraceShowOpcodes && types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm CREATE after Use63Over64Rule gasAvailable=%d isEip4762=%t", gas, interpreter.evm.chainRules.IsEIP150))
+	}
+
 	// reuse size int for stackvalue
 	stackvalue := size
 
@@ -707,6 +720,10 @@ func opCreate(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 	scope.Stack.push(&stackvalue)
 
 	scope.Contract.RefundGas(returnGas, interpreter.evm.Config.Tracer, tracing.GasChangeCallLeftOverRefunded)
+
+	if types.TraceShowOpcodes && types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm CREATE after RefundGas returnGas=%d", returnGas))
+	}
 
 	if suberr == ErrExecutionReverted {
 		interpreter.returnData = res // set REVERT data to return data buffer
@@ -985,6 +1002,10 @@ func makeLog(size int) executionFunc {
 			// core/state doesn't know the current block number.
 			BlockNumber: interpreter.evm.Context.BlockNumber.Uint64(),
 		})
+
+		if types.TraceShowOpcodes && types.IsTargetBlock() {
+			types.OLog2Fast(fmt.Sprintf("a=%s d=%s", strings.ToLower(scope.Contract.Address().String()), common.Bytes2Hex(d)))
+		}
 
 		return nil, nil
 	}

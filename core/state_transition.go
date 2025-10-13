@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/arbitrum/multigas"
 	"github.com/ethereum/go-ethereum/common"
@@ -324,6 +325,11 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 			msg.GasPrice = msg.GasFeeCap
 		}
 	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm call effectiveGasPrice=%d", msg.GasPrice))
+	}
+
 	var err error
 	msg.From, err = types.Sender(s, tx)
 	return msg, err
@@ -549,6 +555,10 @@ func (st *stateTransition) preCheck() error {
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
 func (st *stateTransition) execute() (*ExecutionResult, error) {
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("vm[%s] gas=%d", strings.ToLower(st.msg.From.String()), st.gasRemaining))
+	}
+
 	endTxNow, startHookUsedGas, err, returnData := st.evm.ProcessingHook.StartTxHook()
 	if endTxNow {
 		return &ExecutionResult{
@@ -575,10 +585,18 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	if st.evm.ProcessingHook.DropTip() && st.msg.GasPrice.Cmp(st.evm.Context.BaseFee) > 0 {
 		st.msg.GasPrice = st.evm.Context.BaseFee
 		st.msg.GasTipCap = common.Big0
+
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("evm call effectiveGasPrice msg=%d txContext=%d", st.msg.GasPrice, st.evm.TxContext.GasPrice))
+		}
 	}
 
 	// Check clauses 1-3, buy gas if everything is correct
 	if err := st.preCheck(); err != nil {
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("preCheck err: %v", err))
+		}
+
 		return nil, err
 	}
 
@@ -595,6 +613,11 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("intrinsic gas standard=%d floor=%d", gas, floorDataGas))
+	}
+
 	if st.gasRemaining < gas {
 		return nil, fmt.Errorf("%w: have %d, want %d", ErrIntrinsicGas, st.gasRemaining, gas)
 	}
@@ -640,6 +663,23 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		return nil, fmt.Errorf("%w: code size %v limit %v", ErrMaxInitCodeSizeExceeded, len(msg.Data), int(st.evm.ChainConfig().MaxInitCodeSize()))
 	}
 
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm rules isStyls=%t isArbitrum=%t isPrague=%t", rules.IsStylus, rules.IsArbitrum, rules.IsPrague))
+	}
+
+	precompiles := vm.ActivePrecompiles(rules)
+
+	if len(precompiles) > 0 {
+		strs := make([]string, len(precompiles))
+		for i, item := range precompiles {
+			strs[i] = item.String()
+		}
+
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("precompile activePrecompiles=%s", strings.Join(strs, ",")))
+		}
+	}
+
 	// Execute the preparatory steps for state transition which includes:
 	// - prepare accessList(post-berlin)
 	// - reset transient storage(eip 1153)
@@ -675,8 +715,17 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			st.state.AddAddressToAccessList(addr)
 		}
 
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("evm call from=%s to=%s gasAvailable=%d value=%s",
+				strings.ToLower(msg.From.String()), strings.ToLower(msg.To.String()), st.gasRemaining, value.String()))
+		}
+
 		// Execute the transaction's call.
 		ret, st.gasRemaining, usedMultiGas, vmerr = st.evm.Call(msg.From, st.to(), msg.Data, st.gasRemaining, value)
+	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm finished gasAvailable=%d isError=%t error=%s", st.gasRemaining, vmerr != nil, vmerr))
 	}
 
 	// Refund the gas that was held to limit the amount of computation done.
@@ -702,6 +751,11 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			peakGasUsed = floorDataGas
 		}
 	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("transaction refund gasRemaining=%d refund=%d peakGasUsed=%d initialGas=%d", st.gasRemaining, refund, peakGasUsed, st.initialGas))
+	}
+
 	st.returnGas()
 
 	// Arbitrum: set the multigas refunds

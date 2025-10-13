@@ -17,10 +17,12 @@
 package vm
 
 import (
+	"fmt"
 	gomath "math"
 
 	"github.com/ethereum/go-ethereum/arbitrum/multigas"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -89,6 +91,11 @@ func gasExtCodeHash4762(evm *EVM, contract *Contract, stack *Stack, mem *Memory,
 func makeCallVariantGasEIP4762(oldCalculator gasFunc) gasFunc {
 	return func(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (*multigas.MultiGas, error) {
 		multiGas, err := oldCalculator(evm, contract, stack, mem, memorySize)
+
+		if types.IsTargetBlock() && types.TraceShowOpcodes {
+			types.OLog2(fmt.Sprintf("staticcall cost eip4762 oldGas=%d isSystem=%t", multiGas.SingleGas(), contract.IsSystemCall))
+		}
+
 		if err != nil {
 			return multigas.ZeroGas(), err
 		}
@@ -102,6 +109,11 @@ func makeCallVariantGasEIP4762(oldCalculator gasFunc) gasFunc {
 		if witnessGas == 0 {
 			witnessGas = params.WarmStorageReadCostEIP2929
 		}
+
+		if types.IsTargetBlock() && types.TraceShowOpcodes {
+			types.OLog2(fmt.Sprintf("staticcall cost eip4762 witnessGas=%d", witnessGas))
+		}
+
 		// Witness gas considered as storage access.
 		// See rationale in: https://github.com/OffchainLabs/nitro/blob/master/docs/decisions/0002-multi-dimensional-gas-metering.md
 		multiGas.SafeIncrement(multigas.ResourceKindStorageAccess, witnessGas)

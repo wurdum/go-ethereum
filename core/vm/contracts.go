@@ -24,6 +24,7 @@ import (
 	"maps"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
@@ -31,6 +32,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/crypto/bn256"
@@ -249,8 +251,19 @@ type AdvancedPrecompile interface {
 // - any error that occurred
 func RunPrecompiledContract(p PrecompiledContract, input []byte, suppliedGas uint64, logger *tracing.Hooks, advancedInfo *AdvancedPrecompileCall) (ret []byte, remainingGas uint64, err error) {
 	advanced, isAdvanced := p.(AdvancedPrecompile)
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("precompile[%s] gas=%d adavanced=%t input=%s", strings.ToLower(advancedInfo.PrecompileAddress.String()), suppliedGas, isAdvanced, common.Bytes2Hex(input)))
+	}
+
 	if isAdvanced {
-		return advanced.RunAdvanced(input, suppliedGas, advancedInfo)
+		runAdvanced, gas, err := advanced.RunAdvanced(input, suppliedGas, advancedInfo)
+
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("precompile gasLeft=%d err=%s", gas, err))
+		}
+
+		return runAdvanced, gas, err
 	}
 	gasCost := p.RequiredGas(input)
 	if suppliedGas < gasCost {
@@ -261,6 +274,11 @@ func RunPrecompiledContract(p PrecompiledContract, input []byte, suppliedGas uin
 	}
 	suppliedGas -= gasCost
 	output, err := p.Run(input)
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("precompile gasLeft=%d gasCost=%d err=%s", suppliedGas, gasCost, err))
+	}
+
 	return output, suppliedGas, err
 }
 

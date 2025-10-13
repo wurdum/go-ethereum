@@ -80,6 +80,10 @@ func NewStylusPrefix(dictionary byte) []byte {
 // If the asmMap is added to the newly activated wasms, then wasmActivation is added to the journal so the operation can be reverted and the new entry removed in StateDB.RevertToSnapshot.
 // note: all ActivateWasm calls in given StateDB cycle (cycle reset by statedb commit) requires that the asmMap contain entries for the same targets as the first asmMap passed to ActivateWasm in the cycle. This is assumed in other parts of the code.
 func (s *StateDB) ActivateWasm(moduleHash common.Hash, asmMap map[rawdb.WasmTarget][]byte) error {
+	if types.IsTargetBlock() {
+		types.OLog("wasm", "activate", fmt.Sprintf("moduleHash=%s", moduleHash.String()))
+	}
+
 	// check consistency of targets with any previous activation
 	// that should be impossible if the ActivateWasm is used correctly, but check for early bug detection
 	for _, previouslyActivated := range s.arbExtraData.activatedWasms {
@@ -164,6 +168,10 @@ func (s *StateDB) GetStylusPagesOpen() uint16 {
 
 func (s *StateDB) SetStylusPagesOpen(open uint16) {
 	s.arbExtraData.openWasmPages = open
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("stylus wasm store set openNow=%d", s.arbExtraData.openWasmPages))
+	}
 }
 
 // Tracks that `new` additional pages have been opened, returning the previous counts
@@ -171,6 +179,11 @@ func (s *StateDB) AddStylusPages(new uint16) (uint16, uint16) {
 	open, ever := s.GetStylusPages()
 	s.arbExtraData.openWasmPages = common.SaturatingUAdd(open, new)
 	s.arbExtraData.everWasmPages = common.MaxInt(ever, s.arbExtraData.openWasmPages)
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("stylus wasm store add pages openNow=%d openEver=%d", s.arbExtraData.openWasmPages, s.arbExtraData.everWasmPages))
+	}
+
 	return open, ever
 }
 
@@ -323,10 +336,18 @@ func (s *StateDB) UserWasms() UserWasms {
 }
 
 func (s *StateDB) RecordCacheWasm(wasm CacheWasm) {
+	if types.IsTargetBlock() {
+		types.OLog("wasm", "record", fmt.Sprintf("moduleHash=%s tag=%d version=%d", wasm.ModuleHash.String(), wasm.Tag, wasm.Version))
+	}
+
 	s.journal.entries = append(s.journal.entries, wasm)
 }
 
 func (s *StateDB) RecordEvictWasm(wasm EvictWasm) {
+	if types.IsTargetBlock() {
+		types.OLog("wasm", "evict", fmt.Sprintf("moduleHash=%s tag=%d version=%d", wasm.ModuleHash.String(), wasm.Tag, wasm.Version))
+	}
+
 	s.journal.entries = append(s.journal.entries, wasm)
 }
 
@@ -342,6 +363,10 @@ type RecentWasms struct {
 
 // Creates an un uninitialized cache
 func NewRecentWasms() RecentWasms {
+	if types.IsTargetBlock() {
+		types.OLog2("stylus cache ctor")
+	}
+
 	return RecentWasms{cache: nil}
 }
 
@@ -350,11 +375,24 @@ func (p RecentWasms) Insert(item common.Hash, retain uint16) bool {
 	if p.cache == nil {
 		cache := lru.NewBasicLRU[common.Hash, struct{}](int(retain))
 		p.cache = &cache
+
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("stylus cache initNew item=%s retain=%d", item.String(), retain))
+		}
 	}
 	if _, hit := p.cache.Get(item); hit {
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("stylus cache item=%s count=%d return=true", item.String(), p.cache.Len()))
+		}
+
 		return hit
 	}
 	p.cache.Add(item, struct{}{})
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("stylus cache item=%s count=%d return=false", item.String(), p.cache.Len()))
+	}
+
 	return false
 }
 
