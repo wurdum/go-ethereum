@@ -18,7 +18,9 @@ package vm
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
+	"strings"
 	"sync/atomic"
 
 	"github.com/holiman/uint256"
@@ -261,6 +263,10 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 	}
 	// Fail if we're trying to transfer more than the available balance
 	if !value.IsZero() && !evm.Context.CanTransfer(evm.StateDB, caller, value) {
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("evm call transfer value=%s caller=%s", value.String(), strings.ToLower(caller.String())))
+		}
+
 		return nil, gas, multigas.ZeroGas(), ErrInsufficientBalance
 	}
 	snapshot := evm.StateDB.Snapshot()
@@ -320,6 +326,11 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 			usedMultiGas.SaturatingAddInto(contract.GetTotalUsedMultiGas())
 		}
 	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm call after pc=? gasAvailable=%d callResult=%s", gas, err))
+	}
+
 	// When an error was returned by the EVM or when setting the creation code
 	// above we revert to the snapshot and consume any gas remaining. Additionally,
 	// when we're in homestead this also counts for code storage gas errors.
@@ -365,6 +376,10 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 	// if caller doesn't have enough balance, it would be an error to allow
 	// over-charging itself. So the check here is necessary.
 	if !evm.Context.CanTransfer(evm.StateDB, caller, value) {
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("evm callCode transfer value=%s caller=%s", value.String(), strings.ToLower(caller.String())))
+		}
+
 		return nil, gas, multigas.ZeroGas(), ErrInsufficientBalance
 	}
 	var snapshot = evm.StateDB.Snapshot()
@@ -396,6 +411,11 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 		gas = contract.Gas
 		usedMultiGas.SaturatingAddInto(contract.GetTotalUsedMultiGas())
 	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm callCode after pc=? gasAvailable=%d callResult=%s", gas, err))
+	}
+
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
@@ -459,6 +479,11 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 		gas = contract.Gas
 		usedMultiGas.SaturatingAddInto(contract.GetTotalUsedMultiGas())
 	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm delegateCall after pc=? gasAvailable=%d callResult=%s", gas, err))
+	}
+
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
@@ -528,6 +553,11 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 		gas = contract.Gas
 		usedMultiGas.SaturatingAddInto(contract.GetTotalUsedMultiGas())
 	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm staticCall after pc=? gasAvailable=%d callResult=%s", gas, err))
+	}
+
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
@@ -631,6 +661,10 @@ func (evm *EVM) create(caller common.Address, code []byte, gas uint64, value *ui
 	}
 	evm.Context.Transfer(evm.StateDB, caller, address, value)
 
+	if types.TraceShowOpcodes && types.IsTargetBlock() {
+		types.OLog2Fast(fmt.Sprintf("evm CREATE after IsEIP4762 gas=%d isEip4762=%t", gas, evm.chainRules.IsEIP4762))
+	}
+
 	// Initialise a new contract and set the code that is to be used by the EVM.
 	// The contract is a scoped environment for this execution context only.
 	contract := NewContract(caller, address, value, gas, evm.jumpDests)
@@ -656,8 +690,17 @@ func (evm *EVM) create(caller common.Address, code []byte, gas uint64, value *ui
 // resulting code that is to be deployed, and consumes necessary gas.
 func (evm *EVM) initNewContract(contract *Contract, address common.Address) ([]byte, error) {
 	ret, err := evm.Run(contract, nil, false)
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm finished gasAvailable=%d isError=%t error=%s", contract.Gas, err != nil, err))
+	}
+
 	if err != nil {
 		return ret, err
+	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm deploying legacy contract eip158Enabled=%t maxCodeSize=%d", evm.chainRules.IsEIP158, evm.chainConfig.MaxCodeSize()))
 	}
 
 	// Check whether the max code size has been exceeded, assign err if the case.
@@ -693,7 +736,13 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address) ([]b
 // Create creates a new contract using code as deployment code.
 func (evm *EVM) Create(caller common.Address, code []byte, gas uint64, value *uint256.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, usedMultiGas multigas.MultiGas, err error) {
 	contractAddr = crypto.CreateAddress(caller, evm.StateDB.GetNonce(caller))
-	return evm.create(caller, code, gas, value, contractAddr, CREATE)
+	create, address, overGas, multiGas, err := evm.create(caller, code, gas, value, contractAddr, CREATE)
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm deployed legacy contract address=%s gasLeft=%d error=%s", strings.ToLower(address.String()), overGas, err))
+	}
+
+	return create, address, overGas, multiGas, err
 }
 
 // Create2 creates a new contract using code as deployment code.
@@ -703,7 +752,13 @@ func (evm *EVM) Create(caller common.Address, code []byte, gas uint64, value *ui
 func (evm *EVM) Create2(caller common.Address, code []byte, gas uint64, endowment *uint256.Int, salt *uint256.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, usedMultiGas multigas.MultiGas, err error) {
 	inithash := crypto.HashData(evm.hasher, code)
 	contractAddr = crypto.CreateAddress2(caller, salt.Bytes32(), inithash[:])
-	return evm.create(caller, code, gas, endowment, contractAddr, CREATE2)
+	create, address, overGas, multiGas, err := evm.create(caller, code, gas, endowment, contractAddr, CREATE2)
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm deployed legacy contract address=%s gasLeft=%d error=%s", strings.ToLower(address.String()), overGas, err))
+	}
+
+	return create, address, overGas, multiGas, err
 }
 
 // resolveCode returns the code associated with the provided account. After

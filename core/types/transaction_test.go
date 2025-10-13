@@ -74,6 +74,29 @@ var (
 	)
 )
 
+func TestEncode(t *testing.T) {
+	tx := ArbitrumRetryTx{
+		ChainId: big.NewInt(1),
+		Nonce:   3,
+		From:    testAddr,
+
+		GasFeeCap:           big.NewInt(1),
+		Gas:                 1,
+		To:                  &testAddr,
+		Value:               big.NewInt(1),
+		Data:                bytes.Repeat([]byte{1}, 32),
+		TicketId:            common.Hash{},
+		RefundTo:            testAddr,
+		MaxRefund:           big.NewInt(1),
+		SubmissionFeeRefund: big.NewInt(1),
+	}
+
+	buff := bytes.Buffer{}
+	_ = tx.encode(&buff)
+
+	println(common.Bytes2Hex(buff.Bytes()))
+}
+
 func TestDecodeEmptyTypedTx(t *testing.T) {
 	input := []byte{0x80}
 	var tx Transaction

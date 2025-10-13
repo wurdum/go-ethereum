@@ -18,6 +18,8 @@ package vm
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/arbitrum/multigas"
 	"github.com/ethereum/go-ethereum/common"
@@ -167,6 +169,11 @@ func gasExtCodeCopyEIP2929(evm *EVM, contract *Contract, stack *Stack, mem *Memo
 // - (ext) balance
 func gasEip2929AccountCheck(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (multigas.MultiGas, error) {
 	addr := common.Address(stack.peek().Bytes20())
+
+	if types.TraceShowOpcodes && types.IsTargetBlock() {
+		types.OLog2Fast(fmt.Sprintf("evm gasEip2929AccountCheck addr=%s", strings.ToLower(addr.String())))
+	}
+
 	// Check slot presence in the access list
 	if !evm.StateDB.AddressInAccessList(addr) {
 		// If the caller cannot afford the cost, this change will be rolled back
@@ -194,6 +201,10 @@ func makeCallVariantGasCallEIP2929(oldCalculator gasFunc, addressPosition int) g
 			if !contract.UseMultiGas(multigas.StorageAccessGas(coldCost), evm.Config.Tracer, tracing.GasChangeCallStorageColdAccess) {
 				return multigas.ZeroGas(), ErrOutOfGas
 			}
+
+			if types.IsTargetBlock() && types.TraceShowOpcodes {
+				types.OLog2(fmt.Sprintf("call cost eip2929 gasAvailable=%d coldCost=%d", contract.Gas, coldCost))
+			}
 		}
 		// Now call the old calculator, which takes into account
 		// - create new account
@@ -204,6 +215,11 @@ func makeCallVariantGasCallEIP2929(oldCalculator gasFunc, addressPosition int) g
 		if warmAccess || err != nil {
 			return multiGas, err
 		}
+
+		if types.IsTargetBlock() && types.TraceShowOpcodes {
+			types.OLog2(fmt.Sprintf("call cost eip2929 odCost=%d", multiGas.SingleGas()))
+		}
+
 		// In case of a cold access, we temporarily add the cold charge back, and also
 		// add it to the returned gas. By adding it to the return, it will be charged
 		// outside of this function, as part of the dynamic gas, and that will make it
@@ -216,6 +232,10 @@ func makeCallVariantGasCallEIP2929(oldCalculator gasFunc, addressPosition int) g
 		var overflow bool
 		if multiGas, overflow = multiGas.SafeIncrement(multigas.ResourceKindStorageAccess, coldCost); overflow {
 			return multigas.ZeroGas(), ErrGasUintOverflow
+		}
+
+		if types.IsTargetBlock() && types.TraceShowOpcodes {
+			types.OLog2(fmt.Sprintf("call cost eip2929 result gasAvailable=%d codCost=%d", contract.Gas, coldCost))
 		}
 
 		return multiGas, nil
@@ -306,6 +326,10 @@ func makeCallVariantGasCallEIP7702(oldCalculator gasFunc) gasFunc {
 			// Cold slot access considered as storage access.
 			// See rationale in: https://github.com/OffchainLabs/nitro/blob/master/docs/decisions/0002-multi-dimensional-gas-metering.md
 			multiGas = multiGas.SaturatingIncrement(multigas.ResourceKindStorageAccess, coldCost)
+
+			if types.IsTargetBlock() && types.TraceShowOpcodes {
+				types.OLog2(fmt.Sprintf("call cost eip7702 gasAvailable=%d coldCost=%d", contract.Gas, coldCost))
+			}
 		}
 
 		// Check if code is a delegation and if so, charge for resolution.
@@ -324,6 +348,10 @@ func makeCallVariantGasCallEIP7702(oldCalculator gasFunc) gasFunc {
 			// Target address resolution considered as storage access.
 			// See rationale in: https://github.com/OffchainLabs/nitro/blob/master/docs/decisions/0002-multi-dimensional-gas-metering.md
 			multiGas = multiGas.SaturatingIncrement(multigas.ResourceKindStorageAccess, cost)
+
+			if types.IsTargetBlock() && types.TraceShowOpcodes {
+				types.OLog2(fmt.Sprintf("call cost eip7702 delegation gasAvailable=%d cost=%d", contract.Gas, cost))
+			}
 		}
 
 		// Now call the old calculator, which takes into account
@@ -336,6 +364,10 @@ func makeCallVariantGasCallEIP7702(oldCalculator gasFunc) gasFunc {
 			return multiOld, err
 		}
 
+		if types.IsTargetBlock() && types.TraceShowOpcodes {
+			types.OLog2(fmt.Sprintf("call cost eip7702 oldCost=%d", multiGas.SingleGas()))
+		}
+
 		// Temporarily add the gas charge back to the contract and return value. By
 		// adding it to the return, it will be charged outside of this function, as
 		// part of the dynamic gas. This will ensure it is correctly reported to
@@ -346,6 +378,10 @@ func makeCallVariantGasCallEIP7702(oldCalculator gasFunc) gasFunc {
 		var overflow bool
 		if multiGas, overflow = multiGas.SafeAdd(multiOld); overflow {
 			return multigas.ZeroGas(), ErrGasUintOverflow
+		}
+
+		if types.IsTargetBlock() && types.TraceShowOpcodes {
+			types.OLog2(fmt.Sprintf("call cost eip7702 result gasAvailable=%d", contract.Gas))
 		}
 
 		return multiGas, nil

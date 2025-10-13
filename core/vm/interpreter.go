@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 )
 
@@ -169,6 +170,10 @@ func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool) (ret []byte
 
 	// Arbitrum: handle Stylus programs
 	if evm.chainRules.IsStylus && state.IsStylusProgram(contract.Code) {
+		if types.IsTargetBlock() {
+			types.OLog2("stylus execute")
+		}
+
 		ret, err = evm.ProcessingHook.ExecuteWASM(callContext, input, evm)
 		return
 	}
@@ -183,6 +188,8 @@ func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool) (ret []byte
 			// Capture pre-execution values for tracing.
 			logged, pcCopy, gasCopy = false, pc, contract.Gas
 		}
+
+		logged, pcCopy, gasCopy = false, pc, contract.Gas
 
 		if isEIP4762 && !contract.IsDeployment && !contract.IsSystemCall {
 			// if the PC ends up in a new "chunk" of verkleized code, charge the
@@ -216,6 +223,7 @@ func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool) (ret []byte
 
 		// All ops with a dynamic memory usage also has a dynamic gas cost.
 		var memorySize uint64
+		var dynamicCost uint64
 		if operation.dynamicGas != nil {
 			// calculate the new memory size and expand the memory to fit
 			// the operation
@@ -235,7 +243,7 @@ func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool) (ret []byte
 			// Consume the gas and return an error if not enough gas is available.
 			// cost is explicitly set so that the capture state defer method can get the proper cost
 			multigasDynamicCost, err := operation.dynamicGas(evm, contract, stack, mem, memorySize)
-			dynamicCost := multigasDynamicCost.SingleGas()
+			dynamicCost = multigasDynamicCost.SingleGas()
 			cost += dynamicCost // for tracing
 			if err != nil {
 				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
@@ -265,6 +273,11 @@ func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool) (ret []byte
 
 		// execute the operation
 		res, err = operation.execute(&pc, evm, callContext)
+
+		if types.TraceShowOpcodes && types.IsTargetBlock() {
+			types.OLog2Fast(fmt.Sprintf("d=%d pc=%d i=%s ga=%d cg=%d dg=%d ex=%v", evm.Depth()-1, pc+1, op.String(), gasCopy-cost, operation.constantGas, dynamicCost, err))
+		}
+
 		if err != nil {
 			break
 		}

@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/arbitrum/multigas"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -351,6 +352,11 @@ func gasCreateEip3860(evm *EVM, contract *Contract, stack *Stack, mem *Memory, m
 	if err != nil {
 		return multigas.ZeroGas(), err
 	}
+
+	if types.TraceShowOpcodes && types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm CREATE memory gasAvailable=%d gasCost=%d eip3860=%t", contract.Gas, multiGas.SingleGas(), evm.chainRules.IsShanghai))
+	}
+
 	size, overflow := stack.Back(2).Uint64WithOverflow()
 	if overflow {
 		return multigas.ZeroGas(), ErrGasUintOverflow
@@ -366,6 +372,11 @@ func gasCreateEip3860(evm *EVM, contract *Contract, stack *Stack, mem *Memory, m
 	if multiGas, overflow = multiGas.SafeIncrement(multigas.ResourceKindComputation, moreGas); overflow {
 		return multigas.ZeroGas(), ErrGasUintOverflow
 	}
+
+	if types.TraceShowOpcodes && types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("evm CREATE result=%d codeSize=%d memorySize=%d moreGas=%d", multiGas.SingleGas(), size, memorySize, moreGas))
+	}
+
 	return multiGas, nil
 }
 func gasCreate2Eip3860(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (multigas.MultiGas, error) {
@@ -497,11 +508,21 @@ func gasCallCode(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memory
 
 func gasDelegateCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (multigas.MultiGas, error) {
 	multiGas, err := memoryGasCost(mem, memorySize)
+
+	if types.IsTargetBlock() && types.TraceShowOpcodes {
+		types.OLog2(fmt.Sprintf("delegatecall cost memoryGas=%d", multiGas.SingleGas()))
+	}
+
 	if err != nil {
 		return multigas.ZeroGas(), err
 	}
 	gas := multiGas.SingleGas()
 	evm.callGasTemp, err = callGas(evm.chainRules.IsEIP150, contract.Gas, gas, stack.Back(0))
+
+	if types.IsTargetBlock() && types.TraceShowOpcodes {
+		types.OLog2(fmt.Sprintf("delegatecall cost callGas=%d", evm.callGasTemp))
+	}
+
 	if err != nil {
 		return multigas.ZeroGas(), err
 	}
@@ -517,11 +538,21 @@ func gasDelegateCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, me
 
 func gasStaticCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (multigas.MultiGas, error) {
 	multiGas, err := memoryGasCost(mem, memorySize)
+
+	if types.IsTargetBlock() && types.TraceShowOpcodes {
+		types.OLog2(fmt.Sprintf("staticcall cost memoryGas=%d", multiGas.SingleGas()))
+	}
+
 	if err != nil {
 		return multigas.ZeroGas(), err
 	}
 	gas := multiGas.SingleGas()
 	evm.callGasTemp, err = callGas(evm.chainRules.IsEIP150, contract.Gas, gas, stack.Back(0))
+
+	if types.IsTargetBlock() && types.TraceShowOpcodes {
+		types.OLog2(fmt.Sprintf("staticcall cost callGas=%d", evm.callGasTemp))
+	}
+
 	if err != nil {
 		return multigas.ZeroGas(), err
 	}
