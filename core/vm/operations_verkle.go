@@ -17,10 +17,12 @@
 package vm
 
 import (
+	"fmt"
 	gomath "math"
 
 	"github.com/ethereum/go-ethereum/arbitrum/multigas"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -104,6 +106,10 @@ func makeCallVariantGasEIP4762(oldCalculator gasFunc, withTransferCosts bool) ga
 		contract.UsedMultiGas.SaturatingAddInto(witnessGas)
 		multiGas, err := oldCalculator(evm, contract, stack, mem, memorySize)
 
+		if types.IsTargetBlock() && types.TraceShowOpcodes {
+			types.OLog2(fmt.Sprintf("staticcall cost eip4762 oldGas=%d isSystem=%t", multiGas.SingleGas(), contract.IsSystemCall))
+		}
+
 		// restore witness gas so that it can be charged at the callsite
 		contract.Gas += witnessGas.SingleGas()
 		contract.RetainedMultiGas.SaturatingAddInto(witnessGas)
@@ -111,8 +117,17 @@ func makeCallVariantGasEIP4762(oldCalculator gasFunc, withTransferCosts bool) ga
 		// See rationale in: https://github.com/OffchainLabs/nitro/blob/master/docs/decisions/0002-multi-dimensional-gas-metering.md
 		var overflow bool
 		if multiGas, overflow = multiGas.SafeAdd(witnessGas); overflow {
+			if types.IsTargetBlock() && types.TraceShowOpcodes {
+				types.OLog2("staticcall cost eip4762 overflow!")
+			}
+
 			return multigas.ZeroGas(), ErrGasUintOverflow
 		}
+
+		if types.IsTargetBlock() && types.TraceShowOpcodes {
+			types.OLog2(fmt.Sprintf("staticcall cost eip4762 gas=%d witnessGas=%d", multiGas.SingleGas(), witnessGas))
+		}
+
 		return multiGas, err
 	}
 }

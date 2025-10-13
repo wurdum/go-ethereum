@@ -22,8 +22,10 @@ import (
 	"math/big"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 )
@@ -245,6 +247,10 @@ func (j *journal) accessListAddAccount(addr common.Address) {
 }
 
 func (j *journal) accessListAddSlot(addr common.Address, slot common.Hash) {
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("state journal accesslist add address=%s slot=%s", strings.ToLower(addr.String()), slot.String()))
+	}
+
 	j.append(accessListAddSlotChange{
 		address: addr,
 		slot:    slot,
@@ -515,6 +521,10 @@ func (ch accessListAddAccountChange) copy() journalEntry {
 }
 
 func (ch accessListAddSlotChange) revert(s *StateDB) {
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("state journal accesslist revert address=%s slot=%s", strings.ToLower(ch.address.String()), ch.slot.String()))
+	}
+
 	s.accessList.DeleteSlot(ch.address, ch.slot)
 }
 
