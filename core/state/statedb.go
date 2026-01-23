@@ -879,10 +879,19 @@ func (s *StateDB) GetRefund() uint64 {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("finalise start dirties.Count=%d deleteEmptyObjects=%t", len(s.journal.dirties), deleteEmptyObjects))
+	}
+
 	addressesToPrefetch := make([]common.Address, 0, len(s.journal.dirties))
 	for addr, dirtyCount := range s.journal.dirties {
 		isZombie := s.journal.zombieEntries[addr] == dirtyCount
 		obj, exist := s.stateObjects[addr]
+
+		if types.IsTargetBlock() {
+			types.OLog2(fmt.Sprintf("finalise addr=%s dirtyCount=%d isZombie=%t exist=%t", strings.ToLower(addr.Hex()), dirtyCount, isZombie, exist))
+		}
+
 		if !exist {
 			// ripeMD is 'touched' at block 1714175, in tx 0x1237f737031e40bcde4a8b7e717b2d15e3ecadfe49bb1bbc71ee9deb09c6fcf2
 			// That tx goes out of gas, and although the notion of 'touched' does not exist there, the
@@ -893,6 +902,10 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			continue
 		}
 		if obj.selfDestructed || (deleteEmptyObjects && obj.empty() && !isZombie) {
+			if types.IsTargetBlock() {
+				types.OLog2(fmt.Sprintf("finalise markDelete addr=%s selfDestructed=%t empty=%t", strings.ToLower(addr.Hex()), obj.selfDestructed, obj.empty()))
+			}
+
 			delete(s.stateObjects, obj.address)
 			s.markDelete(addr)
 			// We need to maintain account deletions explicitly (will remain
@@ -902,6 +915,10 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 				s.stateObjectsDestruct[obj.address] = obj
 			}
 		} else {
+			if types.IsTargetBlock() {
+				types.OLog2(fmt.Sprintf("finalise markUpdate addr=%s balance=%s nonce=%d dirtyStorage.len=%d", strings.ToLower(addr.Hex()), obj.data.Balance.String(), obj.data.Nonce, len(obj.dirtyStorage)))
+			}
+
 			obj.finalise()
 			s.markUpdate(addr)
 		}
@@ -910,6 +927,11 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		// the commit-phase will be a lot faster
 		addressesToPrefetch = append(addressesToPrefetch, addr) // Copy needed for closure
 	}
+
+	if types.IsTargetBlock() {
+		types.OLog2(fmt.Sprintf("finalise done addressesToPrefetch.len=%d mutations.len=%d", len(addressesToPrefetch), len(s.mutations)))
+	}
+
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
 		if err := s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch, nil, false); err != nil {
 			log.Error("Failed to prefetch addresses", "addresses", len(addressesToPrefetch), "err", err)
