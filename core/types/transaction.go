@@ -165,6 +165,16 @@ func Log3(block *Block) {
 	} else {
 		output.WriteString("    BaseFeePerGas: <nil>\n")
 	}
+	if header.BlobGasUsed != nil {
+		output.WriteString(fmt.Sprintf("    BlobGasUsed: %d\n", *header.BlobGasUsed))
+	} else {
+		output.WriteString("    BlobGasUsed: nil\n")
+	}
+	if header.ExcessBlobGas != nil {
+		output.WriteString(fmt.Sprintf("    ExcessBlobGas: %d\n", *header.ExcessBlobGas))
+	} else {
+		output.WriteString("    ExcessBlobGas: nil\n")
+	}
 
 	// IsPostMerge check
 	isPostMerge := header.Difficulty.Cmp(big.NewInt(0)) == 0 && header.MixDigest == (common.Hash{})
