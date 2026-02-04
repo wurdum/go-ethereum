@@ -261,6 +261,10 @@ func NewMessageGasEstimationContext() *MessageRunContext {
 	}
 }
 
+func (c *MessageRunContext) GetRawRunMode() uint8 {
+	return uint8(c.runMode)
+}
+
 func (c *MessageRunContext) IsCommitMode() bool {
 	return c.runMode == messageCommitMode
 }
